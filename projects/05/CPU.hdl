@@ -20,7 +20,7 @@
  * they are affected instantaneously by the execution of the current 
  * instruction. The addressM and pc outputs are clocked: although they 
  * are affected by the execution of the current instruction, they commit 
- * to their new values only in the next time step. If reset==1 then the 
+ * to their new values only in the next time step. If reset==1 then the
  * CPU jumps to address 0 (i.e. pc is set to 0 in next time step) rather 
  * than to the address resulting from executing the current instruction. 
  */
@@ -39,5 +39,38 @@ CHIP CPU {
         pc[15];          // address of next instruction
 
     PARTS:
-    // Put your code here:
+    // instruction
+    And(a=instruction[15], b=instruction[12], out=a);
+    And(a=instruction[15], b=instruction[11], out=c1);
+    And(a=instruction[15], b=instruction[10], out=c2);
+    And(a=instruction[15], b=instruction[9], out=c3);
+    And(a=instruction[15], b=instruction[8], out=c4);
+    And(a=instruction[15], b=instruction[7], out=c5);
+    And(a=instruction[15], b=instruction[6], out=c6);
+    And(a=instruction[15], b=instruction[5], out=d1);
+    And(a=instruction[15], b=instruction[4], out=d2, out=writeD);
+    And(a=instruction[15], b=instruction[3], out=d3, out=writeM);
+    And(a=instruction[15], b=instruction[2], out=j1);
+    And(a=instruction[15], b=instruction[1], out=j2);
+    And(a=instruction[15], b=instruction[0], out=j3);
+
+    // control
+    Not(in=instruction[15], out=instA);
+    Or(a=d1, b=instA, out=writeA);
+
+    // jump
+    And(a=j1, b=ng, out=jumpNg);
+    And(a=j2, b=zr, out=jumpZr);
+    Not(in=ng, out=notNg); Not(in=zr, out=notZr); And(a=notNg, b=notZr, out=pos); // Nor(a=ng, b=zr, out=pos);
+    And(a=j3, b=pos, out=jumpPos);
+    Or8Way(in[0]=jumpNg, in[1]=jumpZr, in[2]=jumpPos, in[3..7]=false, out=jump);
+    Not(in=jump, out=noJump);
+
+    // main
+    Mux16(a=outALU, b=instruction, sel=instA, out=inA);
+    ARegister(in=inA, load=writeA, out=outA, out[0..14]=addressM);
+    DRegister(in=outALU, load=writeD, out=outD);
+    Mux16(a=outA, b=inM, sel=a, out=outAM);
+    ALU(x=outD, y=outAM, zx=c1, nx=c2, zy=c3, ny=c4, f=c5, no=c6, out=outALU, out=outM, zr=zr, ng=ng);
+    PC(in=outA, load=jump, inc=noJump, reset=reset, out[0..14]=pc);
 }
