@@ -27,12 +27,12 @@ enum Command: CustomStringConvertible {
     case arithmetic(Arithmetic)
     case push(segment: Segment, index: Int)
     case pop(segment: Segment, index: Int)
-    case label
-    case goto
-    case `if`
-    case function
+    case label(String)
+    case goto(String)
+    case `if`(String)
+    case function(functionName: String, numLocals: Int)
     case `return`
-    case call
+    case call(functionName: String, numArgs: Int)
 
     var description: String {
         switch self {
@@ -42,18 +42,18 @@ enum Command: CustomStringConvertible {
             return "push \(segment) \(index)"
         case let .pop(segment: segment, index: index):
             return "pop \(segment) \(index)"
-        case .label:
-            return "label"
-        case .goto:
-            return "goto"
-        case .if:
-            return "if"
-        case .function:
-            return "function"
+        case let .label(label):
+            return "label \(label)"
+        case let .goto(label):
+            return "goto \(label)"
+        case let .if(label):
+            return "if \(label)"
+        case let .function(functionName: functionName, numLocals: numLocals):
+            return "function \(functionName) \(numLocals)"
         case .return:
             return "return"
-        case .call:
-            return "call"
+        case let .call(functionName: functionName, numArgs: numArgs):
+            return "call \(functionName) \(numArgs)"
         }
     }
 }

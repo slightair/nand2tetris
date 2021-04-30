@@ -1,12 +1,15 @@
 import Foundation
 
 let argv = ProcessInfo.processInfo.arguments
-guard argv.count == 2, let path = argv.last else {
+guard argv.count > 1, let path = argv.last else {
     print("Usage: VMTranslator <file.vm or directory>")
     exit(1)
 }
 
-//let path = "/Users/slightair/.ghq/github.com/slightair/nand2tetris/projects/07/MemoryAccess/StaticTest"
+var withoutBootstrap = false
+if argv.count > 2, argv[1] == "--without-bootstrap" {
+    withoutBootstrap = true
+}
 
 var isDirectory: ObjCBool = false
 guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
@@ -26,6 +29,10 @@ if isDirectory.boolValue {
 }
 
 let codeWriter = CodeWriter()
+
+if !withoutBootstrap {
+    codeWriter.writeInit()
+}
 
 fileURLs.forEach { fileURL in
     let filePath = fileURL.path

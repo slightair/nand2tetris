@@ -61,6 +61,35 @@ class Parser {
             default:
                 fatalError()
             }
+        case "label", "goto", "if-goto":
+            guard let label = lineScanner.scanUpToCharacters(from: .whitespaces) else {
+                fatalError()
+            }
+
+            switch command {
+            case "label":
+                return .label(label)
+            case "goto":
+                return .goto(label)
+            case "if-goto":
+                return .if(label)
+            default:
+                fatalError()
+            }
+        case "function":
+            guard let functionName = lineScanner.scanUpToCharacters(from: .whitespaces),
+                  let numLocals = lineScanner.scanInt() else {
+                fatalError()
+            }
+            return .function(functionName: functionName, numLocals: numLocals)
+        case "return":
+            return .return
+        case "call":
+            guard let functionName = lineScanner.scanUpToCharacters(from: .whitespaces),
+                  let numArgs = lineScanner.scanInt() else {
+                fatalError()
+            }
+            return .call(functionName: functionName, numArgs: numArgs)
         default:
             fatalError("Not yet implemented: '\(command)'")
         }

@@ -25,22 +25,22 @@ D=M
 @SP
 AM=M-1
 D=M-D
-@$StackTest.vm:COMP0:TRUE
+@comparison:1:true
 D;JEQ
 @SP
 A=M
 M=0
 @SP
 M=M+1
-@$StackTest.vm:COMP0:END
+@comparison:1:end
 0;JMP
-($StackTest.vm:COMP0:TRUE)
+(comparison:1:true)
 @SP
 A=M
 M=-1
 @SP
 M=M+1
-($StackTest.vm:COMP0:END)
+(comparison:1:end)
 
 // push constant 17
 @17
@@ -67,22 +67,22 @@ D=M
 @SP
 AM=M-1
 D=M-D
-@$StackTest.vm:COMP1:TRUE
+@comparison:2:true
 D;JEQ
 @SP
 A=M
 M=0
 @SP
 M=M+1
-@$StackTest.vm:COMP1:END
+@comparison:2:end
 0;JMP
-($StackTest.vm:COMP1:TRUE)
+(comparison:2:true)
 @SP
 A=M
 M=-1
 @SP
 M=M+1
-($StackTest.vm:COMP1:END)
+(comparison:2:end)
 
 // push constant 16
 @16
@@ -109,22 +109,22 @@ D=M
 @SP
 AM=M-1
 D=M-D
-@$StackTest.vm:COMP2:TRUE
+@comparison:3:true
 D;JEQ
 @SP
 A=M
 M=0
 @SP
 M=M+1
-@$StackTest.vm:COMP2:END
+@comparison:3:end
 0;JMP
-($StackTest.vm:COMP2:TRUE)
+(comparison:3:true)
 @SP
 A=M
 M=-1
 @SP
 M=M+1
-($StackTest.vm:COMP2:END)
+(comparison:3:end)
 
 // push constant 892
 @892
@@ -151,22 +151,22 @@ D=M
 @SP
 AM=M-1
 D=M-D
-@$StackTest.vm:COMP3:TRUE
+@comparison:4:true
 D;JLT
 @SP
 A=M
 M=0
 @SP
 M=M+1
-@$StackTest.vm:COMP3:END
+@comparison:4:end
 0;JMP
-($StackTest.vm:COMP3:TRUE)
+(comparison:4:true)
 @SP
 A=M
 M=-1
 @SP
 M=M+1
-($StackTest.vm:COMP3:END)
+(comparison:4:end)
 
 // push constant 891
 @891
@@ -193,22 +193,22 @@ D=M
 @SP
 AM=M-1
 D=M-D
-@$StackTest.vm:COMP4:TRUE
+@comparison:5:true
 D;JLT
 @SP
 A=M
 M=0
 @SP
 M=M+1
-@$StackTest.vm:COMP4:END
+@comparison:5:end
 0;JMP
-($StackTest.vm:COMP4:TRUE)
+(comparison:5:true)
 @SP
 A=M
 M=-1
 @SP
 M=M+1
-($StackTest.vm:COMP4:END)
+(comparison:5:end)
 
 // push constant 891
 @891
@@ -235,22 +235,22 @@ D=M
 @SP
 AM=M-1
 D=M-D
-@$StackTest.vm:COMP5:TRUE
+@comparison:6:true
 D;JLT
 @SP
 A=M
 M=0
 @SP
 M=M+1
-@$StackTest.vm:COMP5:END
+@comparison:6:end
 0;JMP
-($StackTest.vm:COMP5:TRUE)
+(comparison:6:true)
 @SP
 A=M
 M=-1
 @SP
 M=M+1
-($StackTest.vm:COMP5:END)
+(comparison:6:end)
 
 // push constant 32767
 @32767
@@ -277,22 +277,22 @@ D=M
 @SP
 AM=M-1
 D=M-D
-@$StackTest.vm:COMP6:TRUE
+@comparison:7:true
 D;JGT
 @SP
 A=M
 M=0
 @SP
 M=M+1
-@$StackTest.vm:COMP6:END
+@comparison:7:end
 0;JMP
-($StackTest.vm:COMP6:TRUE)
+(comparison:7:true)
 @SP
 A=M
 M=-1
 @SP
 M=M+1
-($StackTest.vm:COMP6:END)
+(comparison:7:end)
 
 // push constant 32766
 @32766
@@ -319,22 +319,22 @@ D=M
 @SP
 AM=M-1
 D=M-D
-@$StackTest.vm:COMP7:TRUE
+@comparison:8:true
 D;JGT
 @SP
 A=M
 M=0
 @SP
 M=M+1
-@$StackTest.vm:COMP7:END
+@comparison:8:end
 0;JMP
-($StackTest.vm:COMP7:TRUE)
+(comparison:8:true)
 @SP
 A=M
 M=-1
 @SP
 M=M+1
-($StackTest.vm:COMP7:END)
+(comparison:8:end)
 
 // push constant 32766
 @32766
@@ -361,22 +361,22 @@ D=M
 @SP
 AM=M-1
 D=M-D
-@$StackTest.vm:COMP8:TRUE
+@comparison:9:true
 D;JGT
 @SP
 A=M
 M=0
 @SP
 M=M+1
-@$StackTest.vm:COMP8:END
+@comparison:9:end
 0;JMP
-($StackTest.vm:COMP8:TRUE)
+(comparison:9:true)
 @SP
 A=M
 M=-1
 @SP
 M=M+1
-($StackTest.vm:COMP8:END)
+(comparison:9:end)
 
 // push constant 57
 @57
