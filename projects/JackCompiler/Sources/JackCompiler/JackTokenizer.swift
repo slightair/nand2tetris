@@ -63,15 +63,6 @@ class JackTokenizer {
             return nil
         }
 
-        func scanKeyword() -> Keyword? {
-            for keyword in Keyword.allCases {
-                if let raw = scanner.scanString(keyword.rawValue), let next = Keyword(rawValue: raw) {
-                    return next
-                }
-            }
-            return nil
-        }
-
         func scanIntegerConstant() -> Int? {
             scanner.scanInt()
         }
@@ -85,8 +76,16 @@ class JackTokenizer {
             return string
         }
 
-        func scanIdentifier() -> String? {
-            scanner.scanCharacters(from: Self.identifierCharcterSet)
+        func scanKeywordOrIdentifier() -> Token? {
+            if let raw = scanner.scanCharacters(from: Self.identifierCharcterSet) {
+                for _ in Keyword.allCases {
+                    if let keyword = Keyword(rawValue: raw) {
+                        return .keyword(keyword)
+                    }
+                }
+                return .identifier(raw)
+            }
+            return nil
         }
 
         var tokens: [Token] = []
@@ -95,14 +94,12 @@ class JackTokenizer {
                 // nothing to do
             } else if let symbol = scanSymbol() {
                 tokens.append(.symbol(symbol))
-            } else if let keyword = scanKeyword() {
-                tokens.append(.keyword(keyword))
             } else if let integer = scanIntegerConstant() {
                 tokens.append(.integerConstant(integer))
             } else if let string = scanStringConstant() {
                 tokens.append(.stringConstant(string))
-            } else if let identifier = scanIdentifier() {
-                tokens.append(.identifier(identifier))
+            } else if let token = scanKeywordOrIdentifier() {
+                tokens.append(token)
             } else {
                 let unexpectedString = scanner.scanUpToCharacters(from: .whitespacesAndNewlines) ?? "<nil>"
                 fatalError("Unexpected input: '\(unexpectedString)'")

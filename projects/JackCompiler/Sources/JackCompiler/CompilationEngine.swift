@@ -1,18 +1,36 @@
 import Foundation
 
 class CompilationEngine {
-    let xmlWriter: XMLWriter
-    let tokenizer: JackTokenizer
+    private let tokenizer: JackTokenizer
+    private let symbolTable: SymbolTable
+    private let xmlWriter: XMLWriter?
+    private let vmWriter: VMWriter?
 
-    init(inURL: URL, outURL: URL) throws {
-        xmlWriter = try XMLWriter(fileURL: outURL)
-        tokenizer = try JackTokenizer(fileURL: inURL)
+    private var className: String?
+    private var labelCounter = 0
+
+    init(inFileURL: URL, outXMLFileURL: URL? = nil, outVMFileURL: URL? = nil) throws {
+        tokenizer = try JackTokenizer(fileURL: inFileURL)
+        symbolTable = SymbolTable()
+
+        if let outFileURL = outXMLFileURL {
+            xmlWriter = try XMLWriter(fileURL: outFileURL)
+        } else {
+            xmlWriter = nil
+        }
+
+        if let outFileURL = outVMFileURL {
+            vmWriter = try VMWriter(fileURL: outFileURL)
+        } else {
+            vmWriter = nil
+        }
     }
 
     func compileClass() {
         open("class")
         keyword(.class)
-        className()
+        let nameToken = className()
+        className = nameToken.value
         symbol("{")
         while current().isKeyword(in: [.static, .field]) {
             compileClassVarDec()
@@ -26,45 +44,65 @@ class CompilationEngine {
 
     func compileClassVarDec() {
         open("classVarDec")
-        keyword(in: [.static, .field])
-        type()
-        varName()
+        let kindToken = keyword(in: [.static, .field])
+        let typeToken = type()
+        var nameToken = varName()
+        registerSymbol(nameToken: nameToken, typeToken: typeToken, kindToken: kindToken)
         while current().isSymbol(",") {
             symbol(",")
-            varName()
+            nameToken = varName()
+            registerSymbol(nameToken: nameToken, typeToken: typeToken, kindToken: kindToken)
         }
         symbol(";")
         close("classVarDec")
     }
 
     func compileSubroutine() {
+        symbolTable.startSubroutine()
         open("subroutineDec")
-        keyword(in: [.constructor, .function, .method])
+        let subroutineToken = keyword(in: [.constructor, .function, .method])
         voidOrType()
-        subroutineName()
+        let nameToken = subroutineName()
         symbol("(")
-        compileParameterList()
+        compileParameterList(isMethod: subroutineToken == .keyword(.method))
         symbol(")")
         open("subroutineBody")
         symbol("{")
         while current().isKeyword(.var) {
             compileVarDec()
         }
+        let numLocals = symbolTable.varCount(kind: .var)
+        vmWriter?.writeFunction(name: "\(className!).\(nameToken.value)", numLocals: numLocals)
+
+        if subroutineToken == .keyword(.constructor) {
+            let numFields = symbolTable.varCount(kind: .field)
+            vmWriter?.writePush(segment: .constant, index: numFields)
+            vmWriter?.writeCall(name: "Memory.alloc", numArgs: 1)
+            vmWriter?.writePop(segment: .pointer, index: 0)
+        }
+
+        if subroutineToken == .keyword(.method) {
+            vmWriter?.writePush(segment: .argument, index: 0)
+            vmWriter?.writePop(segment: .pointer, index: 0)
+        }
+
         compileStatements()
         symbol("}")
         close("subroutineBody")
         close("subroutineDec")
     }
 
-    func compileParameterList() {
+    func compileParameterList(isMethod: Bool) {
         open("parameterList")
         if current().isType() {
-            type()
-            varName()
+            var typeToken = type()
+            var nameToken = varName()
+            registerSymbol(nameToken: nameToken, typeToken: typeToken, kind: .arg, isMethod: isMethod)
             while current().isSymbol(",") {
                 symbol(",")
-                type()
-                varName()
+                typeToken = type()
+                nameToken = varName()
+                registerSymbol(nameToken: nameToken, typeToken: typeToken, kind: .arg, isMethod: isMethod)
             }
         }
         close("parameterList")
@@ -73,11 +111,13 @@ class CompilationEngine {
     func compileVarDec() {
         open("varDec")
         keyword(.var)
-        type()
-        varName()
+        let typeToken = type()
+        var nameToken = varName()
+        registerSymbol(nameToken: nameToken, typeToken: typeToken, kind: .var)
         while current().isSymbol(",") {
             symbol(",")
-            varName()
+            nameToken = varName()
+            registerSymbol(nameToken: nameToken, typeToken: typeToken, kind: .var)
         }
         symbol(";")
         close("varDec")
@@ -108,6 +148,7 @@ class CompilationEngine {
         open("doStatement")
         keyword(.do)
         compileSubroutineCall()
+        vmWriter?.writePop(segment: .temp, index: 0)
         symbol(";")
         close("doStatement")
     }
@@ -115,26 +156,50 @@ class CompilationEngine {
     func compileLet() {
         open("letStatement")
         keyword(.let)
-        varName()
+
+        let isArray: Bool
+        let nameToken = varName()
         if current().isSymbol("[") {
+            isArray = true
             symbol("[")
             compileExpression()
             symbol("]")
+            resolveSymbol(nameToken: nameToken, command: .push)
+            vmWriter?.writeArithmetic(.add)
+        } else {
+            isArray = false
         }
         symbol("=")
         compileExpression()
+
+        if isArray {
+            vmWriter?.writePop(segment: .temp, index: 0)
+            vmWriter?.writePop(segment: .pointer, index: 1)
+            vmWriter?.writePush(segment: .temp, index: 0)
+            vmWriter?.writePop(segment: .that, index: 0)
+        } else {
+            resolveSymbol(nameToken: nameToken, command: .pop)
+        }
+
         symbol(";")
         close("letStatement")
     }
 
     func compileWhile() {
+        let label1 = makeLabel()
+        let label2 = makeLabel()
         open("whileStatement")
         keyword(.while)
+        vmWriter?.writeLabel(label: label1)
         symbol("(")
         compileExpression()
+        vmWriter?.writeArithmetic(.not)
+        vmWriter?.writeIf(label: label2)
         symbol(")")
         symbol("{")
         compileStatements()
+        vmWriter?.writeGoto(label: label1)
+        vmWriter?.writeLabel(label: label2)
         symbol("}")
         close("whileStatement")
     }
@@ -144,26 +209,36 @@ class CompilationEngine {
         keyword(.return)
         if current().canBeTerm() {
             compileExpression()
+        } else {
+            vmWriter?.writePush(segment: .constant, index: 0)
         }
+        vmWriter?.writeReturn()
         symbol(";")
         close("returnStatement")
     }
 
     func compileIf() {
+        let label1 = makeLabel()
+        let label2 = makeLabel()
         open("ifStatement")
         keyword(.if)
         symbol("(")
         compileExpression()
+        vmWriter?.writeArithmetic(.not)
+        vmWriter?.writeIf(label: label1)
         symbol(")")
         symbol("{")
         compileStatements()
+        vmWriter?.writeGoto(label: label2)
         symbol("}")
+        vmWriter?.writeLabel(label: label1)
         if current().isKeyword(.else) {
             keyword(.else)
             symbol("{")
             compileStatements()
             symbol("}")
         }
+        vmWriter?.writeLabel(label: label2)
         close("ifStatement")
     }
 
@@ -171,8 +246,30 @@ class CompilationEngine {
         open("expression")
         compileTerm()
         while current().isOp() {
-            op()
+            let opToken = op()
             compileTerm()
+            switch opToken.value {
+            case "+":
+                vmWriter?.writeArithmetic(.add)
+            case "-":
+                vmWriter?.writeArithmetic(.sub)
+            case "*":
+                vmWriter?.writeCall(name: "Math.multiply", numArgs: 2)
+            case "/":
+                vmWriter?.writeCall(name: "Math.divide", numArgs: 2)
+            case "&":
+                vmWriter?.writeArithmetic(.and)
+            case "|":
+                vmWriter?.writeArithmetic(.or)
+            case "<":
+                vmWriter?.writeArithmetic(.lt)
+            case ">":
+                vmWriter?.writeArithmetic(.gt)
+            case "=":
+                vmWriter?.writeArithmetic(.eq)
+            default:
+                fatalError()
+            }
         }
         close("expression")
     }
@@ -181,27 +278,44 @@ class CompilationEngine {
         open("term")
         switch current() {
         case .integerConstant:
-            integerConstant()
+            let integer = integerConstant()
+            vmWriter?.writePush(segment: .constant, index: Int(integer.value)!)
         case .stringConstant:
-            stringConstant()
+            let string = stringConstant()
+            vmWriter?.writePush(segment: .constant, index: string.value.count)
+            vmWriter?.writeCall(name: "String.new", numArgs: 1)
+            for char in string.value.utf8 {
+                vmWriter?.writePush(segment: .constant, index: Int(char))
+                vmWriter?.writeCall(name: "String.appendChar", numArgs: 2)
+            }
         case .keyword(.true):
             keyword(.true)
+            vmWriter?.writePush(segment: .constant, index: 1)
+            vmWriter?.writeArithmetic(.neg)
         case .keyword(.false):
             keyword(.false)
+            vmWriter?.writePush(segment: .constant, index: 0)
         case .keyword(.null):
             keyword(.null)
+            vmWriter?.writePush(segment: .constant, index: 0)
         case .keyword(.this):
             keyword(.this)
+            vmWriter?.writePush(segment: .pointer, index: 0)
         case .identifier:
             if next().isSymbol("[") {
-                identifier()
+                let arrayToken = identifier()
                 symbol("[")
                 compileExpression()
                 symbol("]")
+                resolveSymbol(nameToken: arrayToken, command: .push)
+                vmWriter?.writeArithmetic(.add)
+                vmWriter?.writePop(segment: .pointer, index: 1)
+                vmWriter?.writePush(segment: .that, index: 0)
             } else if next().isSymbol("(") || next().isSymbol(".") {
                 compileSubroutineCall()
             } else {
-                identifier()
+                let nameToken = identifier()
+                resolveSymbol(nameToken: nameToken, command: .push)
             }
         case .symbol("("):
             symbol("(")
@@ -210,46 +324,101 @@ class CompilationEngine {
         case .symbol("-"):
             symbol("-")
             compileTerm()
+            vmWriter?.writeArithmetic(.neg)
         case .symbol("~"):
             symbol("~")
             compileTerm()
+            vmWriter?.writeArithmetic(.not)
         default:
             fatalError()
         }
         close("term")
     }
 
-    func compileExpressionList() {
+    func compileExpressionList() -> Int {
         open("expressionList")
+        var numArgs = 0
         if current().canBeTerm() {
             compileExpression()
+            numArgs += 1
             while current().isSymbol(",") {
                 symbol(",")
                 compileExpression()
+                numArgs += 1
             }
         }
         close("expressionList")
+        return numArgs
+    }
+
+    private func subroutineAttribute(nameToken1: Token, nameToken2: Token?) -> (name: String, isMethod: Bool, segment: Segment?, index: Int?) {
+        let name: String
+        let isMethod: Bool
+        var segment: Segment?
+        var index: Int?
+
+        if let nameToken2 = nameToken2 {
+            if let klass = symbolTable.typeOf(name: nameToken1.value),
+               let idx = symbolTable.indexOf(name: nameToken1.value),
+               let kind = symbolTable.kindOf(name: nameToken1.value) {
+                isMethod = true
+                name = "\(klass).\(nameToken2.value)"
+                switch kind {
+                case .static:
+                    segment = .static
+                case .field:
+                    segment = .this
+                case .arg:
+                    segment = .argument
+                case .var:
+                    segment = .local
+                }
+                index = idx
+            } else {
+                isMethod = false
+                name = "\(nameToken1.value).\(nameToken2.value)"
+            }
+        } else {
+            isMethod = true
+            name = "\(className!).\(nameToken1.value)"
+            segment = .pointer
+            index = 0
+        }
+
+        return (name: name, isMethod: isMethod, segment: segment, index: index)
     }
 
     private func compileSubroutineCall() {
-        identifier() // subroutineName | className | varName
+        let nameToken1 = identifier() // subroutineName | className | varName
+        var nameToken2: Token?
+
         if current().isSymbol(".") {
             symbol(".")
-            subroutineName()
+            nameToken2 = subroutineName()
         }
+
+        let callee = subroutineAttribute(nameToken1: nameToken1, nameToken2: nameToken2)
+        if callee.isMethod, let segment = callee.segment, let index = callee.index {
+            vmWriter?.writePush(segment: segment, index: index)
+        }
+
         symbol("(")
-        compileExpressionList()
+        var numArgs = compileExpressionList()
+        if callee.isMethod {
+            numArgs += 1
+        }
+        vmWriter?.writeCall(name: callee.name, numArgs: numArgs)
         symbol(")")
     }
 }
 
 extension CompilationEngine {
     private func open(_ name: String) {
-        xmlWriter.writeOpen(name: name)
+        xmlWriter?.writeOpen(name: name)
     }
 
     private func close(_ name: String) {
-        xmlWriter.writeClose(name: name)
+        xmlWriter?.writeClose(name: name)
     }
 
     private func current() -> Token {
@@ -260,77 +429,147 @@ extension CompilationEngine {
         tokenizer.nextToken
     }
 
-    private func advance(validation: (Token) -> Void) {
+    private func advance(validation: (Token) -> Void) -> Token {
         let token = current()
         validation(token)
-        xmlWriter.writeToken(token)
+        xmlWriter?.writeToken(token)
         tokenizer.advance()
+        return token
     }
 
-    private func keyword(_ keyword: Keyword, line: UInt = #line) {
+    @discardableResult
+    private func keyword(_ keyword: Keyword, line: UInt = #line) -> Token {
         advance { token in
             assert(token.isKeyword(keyword), line: line)
         }
     }
 
-    private func keyword(in keywords: Set<Keyword>, line: UInt = #line) {
+    @discardableResult
+    private func keyword(in keywords: Set<Keyword>, line: UInt = #line) -> Token {
         advance { token in
             assert(token.isKeyword(in: keywords), line: line)
         }
     }
 
-    private func identifier(line: UInt = #line) {
+    @discardableResult
+    private func identifier(line: UInt = #line) -> Token {
         advance { token in
             assert(token.name == "identifier", line: line)
         }
     }
 
-    private func className(line: UInt = #line) {
+    @discardableResult
+    private func className(line: UInt = #line) -> Token {
         identifier(line: line)
     }
 
-    private func subroutineName(line: UInt = #line) {
+    @discardableResult
+    private func subroutineName(line: UInt = #line) -> Token {
         identifier(line: line)
     }
 
-    private func varName(line: UInt = #line) {
+    @discardableResult
+    private func varName(line: UInt = #line) -> Token {
         identifier(line: line)
     }
 
-    private func symbol(_ symbol: String, line: UInt = #line) {
+    @discardableResult
+    private func symbol(_ symbol: String, line: UInt = #line) -> Token {
         advance { token in
             assert(token.isSymbol(symbol), line: line)
         }
     }
 
-    private func type(line: UInt = #line) {
+    @discardableResult
+    private func type(line: UInt = #line) -> Token {
         advance { token in
             assert(token.isType(), line: line)
         }
     }
 
-    private func voidOrType(line: UInt = #line) {
+    @discardableResult
+    private func voidOrType(line: UInt = #line) -> Token {
         advance { token in
             assert(token.isKeyword(.void) || token.isType(), line: line)
         }
     }
 
-    private func op(line: UInt = #line) {
+    @discardableResult
+    private func op(line: UInt = #line) -> Token {
         advance { token in
             assert(token.isOp(), line: line)
         }
     }
 
-    private func integerConstant(line: UInt = #line) {
+    @discardableResult
+    private func integerConstant(line: UInt = #line) -> Token {
         advance { token in
             assert(token.name == "integerConstant", line: line)
         }
     }
 
-    private func stringConstant(line: UInt = #line) {
+    @discardableResult
+    private func stringConstant(line: UInt = #line) -> Token {
         advance { token in
             assert(token.name == "stringConstant", line: line)
         }
+    }
+
+    private func registerSymbol(nameToken: Token, typeToken: Token, kind: SymbolTable.Kind, isMethod: Bool = false) {
+        symbolTable.define(name: nameToken.value, type: typeToken.value, kind: kind, isMethod: isMethod)
+    }
+
+    private func registerSymbol(nameToken: Token, typeToken: Token, kindToken: Token) {
+        let kind: SymbolTable.Kind
+        switch kindToken {
+        case .keyword(.static):
+            kind = .static
+        case .keyword(.field):
+            kind = .field
+        default:
+            fatalError()
+        }
+        registerSymbol(nameToken: nameToken, typeToken: typeToken, kind: kind)
+    }
+
+    enum Command {
+        case push
+        case pop
+    }
+
+    private func resolveSymbol(nameToken: Token, command: Command) {
+        guard let kind = symbolTable.kindOf(name: nameToken.value) else {
+            fatalError("Unknown symbol: \(nameToken.value)")
+        }
+
+        let segment: Segment
+        switch kind {
+        case .static:
+            segment = .static
+        case .field:
+            segment = .this
+        case .arg:
+            segment = .argument
+        case .var:
+            segment = .local
+        }
+
+        guard let index = symbolTable.indexOf(name: nameToken.value) else {
+            fatalError("Unknown symbol: \(nameToken.value)")
+        }
+
+        switch command {
+        case .push:
+            vmWriter?.writePush(segment: segment, index: index)
+        case .pop:
+            vmWriter?.writePop(segment: segment, index: index)
+        }
+    }
+
+    private func makeLabel() -> String {
+        let label = "L\(labelCounter)"
+        labelCounter += 1
+        return label
     }
 }
 
