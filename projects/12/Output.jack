@@ -15,12 +15,18 @@
  * as a small filled square, indicates where the next character will be displayed.
  */
 class Output {
-
     // Character map for displaying characters
     static Array charMaps; 
+    static int columnCursor;
+    static int rowCursor;
 
     /** Initializes the screen, and locates the cursor at the screen's top-left. */
     function void init() {
+        let columnCursor = 0;
+        let rowCursor = 0;
+
+        do Output.initMap();
+        return;
     }
 
     // Initializes the character map array
@@ -71,7 +77,7 @@ class Output {
         do Output.create(64,30,51,51,59,59,59,27,3,30,0,0);  // @
         do Output.create(63,30,51,51,24,12,12,0,12,12,0,0);  // ?
 
-        do Output.create(65,0,0,0,0,0,0,0,0,0,0,0);          // A ** TO BE FILLED **
+        do Output.create(65,12,30,51,51,63,51,51,51,51,0,0); // A ** TO BE FILLED **
         do Output.create(66,31,51,51,51,31,51,51,51,31,0,0); // B
         do Output.create(67,28,54,35,3,3,3,35,54,28,0,0);    // C
         do Output.create(68,15,27,51,51,51,51,51,27,15,0,0); // D
@@ -176,28 +182,114 @@ class Output {
     /** Moves the cursor to the j-th column of the i-th row,
      *  and erases the character displayed there. */
     function void moveCursor(int i, int j) {
+        if (i < 0 | i > 511 | j < 0 | j > 255) {
+            do Sys.error(20);
+        }
+
+        let columnCursor = j;
+        let rowCursor = i;
+
+        do Output.erase();
+
+        return;
     }
 
     /** Displays the given character at the cursor location,
      *  and advances the cursor one column forward. */
     function void printChar(char c) {
+        var Array map;
+        var int baseX, baseY, x, y, n;
+
+        let baseX = 8 * columnCursor;
+        let baseY = 11 * rowCursor;
+        let map = Output.getMap(c);
+
+        let y = 0;
+        while (y < 11) {
+            let n = 1;
+            let x = 0;
+            while (x < 8) {
+                if (map[y] & n) {
+                    do Screen.drawPixel(baseX + x, baseY + y);
+                }
+                let n = n * 2;
+                let x = x + 1;
+            }
+            let y = y + 1;
+        }
+
+        let columnCursor = columnCursor + 1;
+        if (columnCursor > 63) {
+            let columnCursor = 0;
+            let rowCursor = rowCursor + 1;
+            if (rowCursor > 22) {
+                let rowCursor = 0;
+            }
+        }
+        return;
     }
 
     /** displays the given string starting at the cursor location,
      *  and advances the cursor appropriately. */
     function void printString(String s) {
+        var int i;
+        let i = 0;
+        while (i < s.length()) {
+            do Output.printChar(s.charAt(i));
+            let i = i + 1;
+        }
+        return;
     }
 
     /** Displays the given integer starting at the cursor location,
      *  and advances the cursor appropriately. */
     function void printInt(int i) {
+        var String string;
+        let string = String.new(10);
+        do string.setInt(i);
+        do Output.printString(string);
+        return;
     }
 
     /** Advances the cursor to the beginning of the next line. */
     function void println() {
+        let rowCursor = rowCursor + 1;
+        if (rowCursor > 22) {
+            let rowCursor = 0;
+        }
+        let columnCursor = 0;
+        return;
     }
 
     /** Moves the cursor one column back. */
     function void backSpace() {
+        let columnCursor = columnCursor - 1;
+        if (columnCursor < 0) {
+            let columnCursor = 63;
+            let rowCursor = rowCursor - 1;
+            if (rowCursor < 0) {
+                let rowCursor = 22;
+            }
+        }
+
+        do Output.erase();
+
+        return;
+    }
+
+    function void erase() {
+        var int lastColumnCursor, lastRowCursor;
+
+        let lastColumnCursor = columnCursor;
+        let lastRowCursor = rowCursor;
+
+        do Screen.setColor(false);
+        do Output.printChar(0);
+        do Screen.setColor(true);
+
+        let columnCursor = lastColumnCursor;
+        let rowCursor = lastRowCursor;
+
+        return;
     }
 }

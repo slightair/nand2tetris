@@ -16,7 +16,7 @@ def compare(cmp, out)
 end
 
 chap = ARGV.first
-chapters = chap ? [chap] : (0..13).map { |c| "%02d" % c }
+chapters = chap ? [chap] : (0..11).map { |c| "%02d" % c }
 
 chapters.each do |c|
   directory = File.join(__dir__, c)
